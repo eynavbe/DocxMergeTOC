@@ -7,6 +7,10 @@ from reportlab.lib.pagesizes import A4
 from reportlab.pdfbase import pdfmetrics
 from reportlab.pdfbase.ttfonts import TTFont
 import io
+import re
+
+def natural_key(text):
+    return [int(part) if part.isdigit() else part.lower() for part in re.split(r'(\d+)', text)]
 
 # === הגדרות נתיבים ===
 input_folder = r"C:\Users\einav\Downloads\word_file"
@@ -30,24 +34,32 @@ current_page_number = 0
 
 # המרת Word ל־PDF ומיזוג
 with tempfile.TemporaryDirectory() as temp_dir:
-    for filename in sorted(os.listdir(input_folder)):
-        if filename.lower().endswith(".docx"):
-            full_path = os.path.join(input_folder, filename)
-            temp_pdf = os.path.join(temp_dir, f"{os.path.splitext(filename)[0]}.pdf")
+    for filename in sorted(os.listdir(input_folder), key=natural_key):
+        full_path = os.path.join(input_folder, filename)
+        name_without_ext = os.path.splitext(filename)[0]
+        ext = filename.lower().split(".")[-1]
 
-            try:
+        if ext not in ("docx", "pdf"):
+            continue  # נתעלם מקבצים לא רלוונטיים
+
+        try:
+            if ext == "docx":
+                temp_pdf = os.path.join(temp_dir, f"{name_without_ext}.pdf")
                 doc = word.Documents.Open(full_path)
-                doc.SaveAs(temp_pdf, FileFormat=17)
+                doc.SaveAs(temp_pdf, FileFormat=17)  # PDF
                 doc.Close()
-
                 part_pdf = fitz.open(temp_pdf)
-                num_pages = len(part_pdf)
-                toc_entries.append((os.path.splitext(filename)[0], current_page_number))
-                merged_pdf.insert_pdf(part_pdf)
-                current_page_number += num_pages
-                part_pdf.close()
-            except Exception as e:
-                print(f"שגיאה בקובץ {filename}: {e}")
+            elif ext == "pdf":
+                part_pdf = fitz.open(full_path)
+
+            num_pages = len(part_pdf)
+            toc_entries.append((name_without_ext, current_page_number))
+            merged_pdf.insert_pdf(part_pdf)
+            current_page_number += num_pages
+            part_pdf.close()
+
+        except Exception as e:
+            print(f"שגיאה בקובץ {filename}: {e}")
 
 word.Quit()
 
@@ -62,7 +74,9 @@ y_positions = []
 y = 770
 
 for title, page_number in toc_entries:
-    display_text = f"{rtl(title)} .......... {page_number + 2}"
+    title_text = rtl(title)
+    page_text = str(page_number + 2)
+    display_text = f"{title_text} .......... {page_text}"
     text_width = pdfmetrics.stringWidth(display_text, "HebrewFont", 11)
     x_start = 550 - text_width
     can.drawString(x_start, y, display_text)
@@ -92,4 +106,4 @@ for x, y, width, page_target in y_positions:
 final_doc.save(output_pdf_path)
 final_doc.close()
 
-print("נוצר קובץ עם תוכן עניינים מבוסס על שמות קבצי Word, כולל קישורים.")
+print("נוצר קובץ עם תוכן עניינים מבוסס על שמות קבצי Word ו־PDF, כולל קישורים.")
